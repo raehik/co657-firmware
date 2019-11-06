@@ -1,20 +1,15 @@
 #include "debug.h"
 #include "scanner.h"
+#include "sensitive.h"
 #include <Wire.h>
 #include <WiFi.h>
 
 //#include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
-#define PIN_LED BUILTIN_LED
+#define PIN_OUT_SCAN_STATUS_LED BUILTIN_LED
 #define PIN_BUT 14
 #define PIN_LED2 21
-
-// Replace with your network credentials
-//char* ssid     = "***REMOVED***";
-//const char* password = "***REMOVED***";
-char* ssid     = "TODO";
-const char* password = "TODO";
 
 void wifi_connect_builtin(void) {
     log_begin("net/wifi", "connecting via builtin credentials");
@@ -31,12 +26,12 @@ void wifi_connect_builtin(void) {
 }
 
 void setup(void) {
-    pinMode(PIN_LED, OUTPUT);
+    pinMode(PIN_OUT_SCAN_STATUS_LED, OUTPUT);
     pinMode(PIN_BUT, INPUT_PULLUP);
     pinMode(PIN_LED2, OUTPUT);
     debug_setup();
     scanner_setup();
-    //wifi_connect_builtin();
+    wifi_connect_builtin();
 }
 
 void blink_led(int pin) {
@@ -65,7 +60,7 @@ void toggle_led_if_state_change(int pin1, int pin2) {
 
 void loop(void) {
     log("run");
-    blink_led(PIN_LED);
+    blink_led(PIN_OUT_SCAN_STATUS_LED);
     //scanner_scan();
     toggle_led_if_state_change(PIN_BUT, PIN_LED2);
     delay(2000);
