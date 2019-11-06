@@ -1,3 +1,6 @@
+# 1 "/tmp/tmpxylw5a3g"
+#include <Arduino.h>
+# 1 "/home/raehik/proj/uni/year-4/modules/co657/proj/firmware/src/main.ino"
 #include "debug.h"
 #include "scanner.h"
 #include "config.h"
@@ -25,7 +28,30 @@ volatile boolean i_g_button;
 portMUX_TYPE i_g_button_mutex = portMUX_INITIALIZER_UNLOCKED;
 
 hw_timer_t *timer_blinker = NULL;
-
+void IRAM_ATTR i_t_blinker_cb();
+void IRAM_ATTR i_g_button_cb();
+void interrupts_setup();
+void wifi_connect_builtin(void);
+void wifi_off(void);
+void wifi_disconnect(void);
+void radio_setup(void);
+void setup(void);
+void mqtt_setup();
+boolean mqtt_try_connect();
+void mqtt_send_test_msg(void);
+void mqtt_disconnect();
+void blink_led(int pin);
+void toggle_led_if_state_change(int pin1, int pin2);
+void loop(void);
+void debug_setup(void);
+void log(const char* log_group, const char* msg);
+void log(const char* msg);
+void log_begin(const char* log_group, const char* msg);
+void log_indicate_wait(void);
+void log_end(void);
+void scanner_setup(void);
+void scanner_scan(void);
+#line 29 "/home/raehik/proj/uni/year-4/modules/co657/proj/firmware/src/main.ino"
 void IRAM_ATTR i_t_blinker_cb() {
     portENTER_CRITICAL_ISR(&i_t_blinker_mutex);
     i_t_blinker = true;
@@ -100,7 +126,7 @@ boolean mqtt_try_connect() {
     if (mqtt_client.connect("chippy")) {
         log("mqtt", "connected");
         mqtt_send_test_msg();
-        //mqtt_client.subscribe("raehik");
+
     } else {
         log("mqtt", "failed to connect");
         Serial.print("failed, rc=");
@@ -119,7 +145,7 @@ void mqtt_disconnect() {
 
 void blink_led(int pin) {
     digitalWrite(pin, HIGH);
-    delay(50); // TODO ugh
+    delay(50);
     digitalWrite(pin, LOW);
 }
 
@@ -154,7 +180,7 @@ void loop(void) {
         i_g_button = false;
         portEXIT_CRITICAL(&i_g_button_mutex);
 
-        //blink_led(PIN_LED2);
+
         wifi_connect_builtin();
         mqtt_try_connect();
         while (!mqtt_client.connected()) {
@@ -167,4 +193,58 @@ void loop(void) {
         wifi_disconnect();
         wifi_off();
     }
+}
+# 1 "/home/raehik/proj/uni/year-4/modules/co657/proj/firmware/src/debug.ino"
+#define SERIAL_RATE 9600
+
+#include "debug.h"
+
+void debug_setup(void) {
+    Serial.begin(SERIAL_RATE);
+}
+
+void log(const char* log_group, const char* msg) {
+    Serial.print(log_group);
+    Serial.print(": ");
+    Serial.println(msg);
+}
+
+void log(const char* msg) {
+    log("main", msg);
+}
+
+void log_begin(const char* log_group, const char* msg) {
+    Serial.print(log_group);
+    Serial.print(": ");
+    Serial.print(msg);
+    Serial.print("...");
+}
+
+void log_indicate_wait(void) {
+    Serial.print(".");
+}
+
+void log_end(void) {
+    Serial.print("\n");
+}
+# 1 "/home/raehik/proj/uni/year-4/modules/co657/proj/firmware/src/scanner.ino"
+#include <NfcTag.h>
+#include <NfcAdapter.h>
+#include <PN532_I2C.h>
+#include <PN532.h>
+#include <Wire.h>
+
+PN532_I2C pn532_i2c(Wire);
+NfcAdapter nfc = NfcAdapter(pn532_i2c);
+
+void scanner_setup(void) {
+    nfc.begin();
+}
+
+void scanner_scan(void) {
+    if (nfc.tagPresent()) {
+        NfcTag tag = nfc.read();
+        tag.print();
+    }
+# 40 "/home/raehik/proj/uni/year-4/modules/co657/proj/firmware/src/scanner.ino"
 }

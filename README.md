@@ -2,8 +2,8 @@
 Intro.
 
 ## Project setup
-This project is built for the Adafruit HUZZAH32 board using the Arduino
-framework.
+This project is built for the Adafruit HUZZAH32 board using a mix of the Arduino
+framework and ESP-IDF (underlies the Arduino framework).
 
 [PlatformIO](https://platformio.org/) is used for building and some
 device management. The project was initialised with the following command:
