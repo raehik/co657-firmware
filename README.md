@@ -1,10 +1,14 @@
+# Project name
+Intro.
+
 ## Project setup
-This project uses [PlatformIO](https://platformio.org/) for building and some
-device management. I initialised the project with the following command:
+This project is built for the Adafruit HUZZAH32 board using the Arduino
+framework.
+
+[PlatformIO](https://platformio.org/) is used for building and some
+device management. The project was initialised with the following command:
 
     pio init --board=featheresp32 --ide=vim
-
-We use the Arduino framework (though we're using an Espressif chip).
 
 ## Dependencies
 ### Hardware
