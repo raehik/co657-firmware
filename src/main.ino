@@ -7,6 +7,8 @@
 #include <PubSubClient.h>
 
 #define PIN_LED BUILTIN_LED
+#define PIN_BUT 14
+#define PIN_LED2 21
 
 // Replace with your network credentials
 //char* ssid     = "***REMOVED***";
@@ -30,16 +32,41 @@ void wifi_connect_builtin(void) {
 
 void setup(void) {
     pinMode(PIN_LED, OUTPUT);
+    pinMode(PIN_BUT, INPUT_PULLUP);
+    pinMode(PIN_LED2, OUTPUT);
     debug_setup();
     scanner_setup();
     //wifi_connect_builtin();
 }
 
+void blink_led(int pin) {
+    digitalWrite(pin, HIGH);
+    delay(50); // TODO ugh
+    digitalWrite(pin, LOW);
+}
+
+int button_prev = LOW;
+int led_state = LOW;
+void toggle_led_if_state_change(int pin1, int pin2) {
+    int button_next = digitalRead(pin1);
+    if (button_prev == HIGH && button_next == LOW) {
+        if (led_state == LOW) {
+            log("but", "going high");
+            digitalWrite(pin2, HIGH);
+            led_state = HIGH;
+        } else if (led_state == HIGH) {
+            log("but", "going low");
+            digitalWrite(pin2, LOW);
+            led_state = LOW;
+        }
+    }
+    button_prev = button_next;
+}
+
 void loop(void) {
-    digitalWrite(PIN_LED, HIGH);
-    log("ping");
-    delay(50);
-    digitalWrite(PIN_LED, LOW);
+    log("run");
+    blink_led(PIN_LED);
+    //scanner_scan();
+    toggle_led_if_state_change(PIN_BUT, PIN_LED2);
     delay(2000);
-    scanner_scan();
 }
