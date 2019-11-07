@@ -1,8 +1,9 @@
 #include "debug.h"
-#include "scanner.h"
+#include "nfc.h"
 #include "config.h"
 #include "sensitive.h"
 
+#include <NfcTag.h>
 #include <Wire.h>
 #include <WiFi.h>
 #include <PubSubClient.h>
@@ -14,22 +15,39 @@
 #define TIMER_INC_US 80
 #define US_TO_MS 1000
 
-#define TIMER_BLINKER_NUM 0
-#define TIMER_BLINKER_TIMEOUT_MS 1000
+#define TIMER_TAG_CHECK_NUM 0
+#define TIMER_TAG_CHECK_TIMEOUT_MS 100
 
 int total_interrupts;
 
-volatile boolean i_t_blinker;
-portMUX_TYPE i_t_blinker_mutex = portMUX_INITIALIZER_UNLOCKED;
+/*
+struct timer_interrupt {
+    volatile boolean fired;
+    portMUX_TYPE mutex;
+    hw_timer_t* timer;
+}
+
+void create_timer_interrupt(struct timer_interrupt* interrupt, uint8_t
+        hw_timer_num, int timeout_ms, void (*callback)(void)) {
+    timer_interrupt->fired = false;
+    timer_interrupt->mutex = portMUX_INITIALIZER_UNLOCKED;
+    timer_interrupt->timer = timerBegin(hw_timer_num, TIMER_INC_US, TIMER_COUNT_UP);
+    timerAttachInterrupt(timer_interrupt->timer, callback, TIMER_EDGE_TRIGGER);
+    timerAlarmWrite(timer_interrupt->timer, timeout_ms * US_TO_MS, TIMER_AUTORELOAD);
+    timerAlarmEnable(timer_interrupt->timer);
+}
+*/
+
+hw_timer_t *timer_tag_check = NULL;
+volatile boolean i_t_tag_check;
+portMUX_TYPE i_t_tag_check_mutex = portMUX_INITIALIZER_UNLOCKED;
 volatile boolean i_g_button;
 portMUX_TYPE i_g_button_mutex = portMUX_INITIALIZER_UNLOCKED;
 
-hw_timer_t *timer_blinker = NULL;
-
-void IRAM_ATTR i_t_blinker_cb() {
-    portENTER_CRITICAL_ISR(&i_t_blinker_mutex);
-    i_t_blinker = true;
-    portEXIT_CRITICAL_ISR(&i_t_blinker_mutex);
+void IRAM_ATTR i_t_tag_check_cb() {
+    portENTER_CRITICAL_ISR(&i_t_tag_check_mutex);
+    i_t_tag_check = true;
+    portEXIT_CRITICAL_ISR(&i_t_tag_check_mutex);
 }
 
 void IRAM_ATTR i_g_button_cb() {
@@ -39,10 +57,10 @@ void IRAM_ATTR i_g_button_cb() {
 }
 
 void interrupts_setup() {
-    timer_blinker = timerBegin(TIMER_BLINKER_NUM, TIMER_INC_US, TIMER_COUNT_UP);
-    timerAttachInterrupt(timer_blinker, &i_t_blinker_cb, TIMER_EDGE_TRIGGER);
-    timerAlarmWrite(timer_blinker, TIMER_BLINKER_TIMEOUT_MS * US_TO_MS, TIMER_AUTORELOAD);
-    timerAlarmEnable(timer_blinker);
+    timer_tag_check = timerBegin(TIMER_TAG_CHECK_NUM, TIMER_INC_US, TIMER_COUNT_UP);
+    timerAttachInterrupt(timer_tag_check, &i_t_tag_check_cb, TIMER_EDGE_TRIGGER);
+    timerAlarmWrite(timer_tag_check, TIMER_TAG_CHECK_TIMEOUT_MS * US_TO_MS, TIMER_AUTORELOAD);
+    timerAlarmEnable(timer_tag_check);
 
     pinMode(PIN_BUT, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(PIN_BUT), i_g_button_cb, FALLING);
@@ -75,14 +93,16 @@ void radio_setup(void) {
 }
 
 void setup(void) {
-    pinMode(PIN_OUT_SCAN_STATUS_LED, OUTPUT);
+    randomSeed(micros());
+    pinMode(PIN_OUT_TAG_READ_STATUS_LED, OUTPUT);
     pinMode(PIN_LED2, OUTPUT);
     debug_setup();
 
     radio_setup();
+    nfc_setup();
 
     interrupts_setup();
-    scanner_setup();
+    log("ready");
 }
 
 const char* mqtt_server = "mqtt.eclipse.org";
@@ -95,12 +115,14 @@ void mqtt_setup() {
     mqtt_client.setServer(mqtt_server, mqtt_port);
 }
 
+#define MQTT_CLIENT_ID_LEN 10
+char mqtt_client_id[MQTT_CLIENT_ID_LEN];
 boolean mqtt_try_connect() {
     log("mqtt", "connecting...");
-    if (mqtt_client.connect("chippy")) {
+    rand_str(mqtt_client_id, MQTT_CLIENT_ID_LEN - 1);
+    log("mqtt", mqtt_client_id);
+    if (mqtt_client.connect(mqtt_client_id)) {
         log("mqtt", "connected");
-        mqtt_send_test_msg();
-        //mqtt_client.subscribe("raehik");
     } else {
         log("mqtt", "failed to connect");
         Serial.print("failed, rc=");
@@ -114,6 +136,7 @@ void mqtt_send_test_msg(void) {
 }
 
 void mqtt_disconnect() {
+    log("mqtt", "disconnecting...");
     mqtt_client.disconnect();
 }
 
@@ -142,20 +165,28 @@ void toggle_led_if_state_change(int pin1, int pin2) {
 }
 
 void loop(void) {
-    if (i_t_blinker) {
-        portENTER_CRITICAL(&i_t_blinker_mutex);
-        i_t_blinker = false;
-        portEXIT_CRITICAL(&i_t_blinker_mutex);
+    if (i_t_tag_check) {
+        log("checking for tag presence");
+        portENTER_CRITICAL(&i_t_tag_check_mutex);
+        i_t_tag_check = false;
+        portEXIT_CRITICAL(&i_t_tag_check_mutex);
 
-        total_interrupts++;
-        blink_led(PIN_OUT_SCAN_STATUS_LED);
+        // don't queue any more scans while we're busy
+        //timerAlarmDisable(timer_scan);
+
+        digitalWrite(PIN_OUT_TAG_READ_STATUS_LED, HIGH);
+        if (nfc_tag_present()) {
+            NfcTag tag;
+            nfc_read(&tag);
+        }
+        digitalWrite(PIN_OUT_TAG_READ_STATUS_LED, LOW);
     } else if (i_g_button) {
         portENTER_CRITICAL(&i_g_button_mutex);
         i_g_button = false;
         portEXIT_CRITICAL(&i_g_button_mutex);
 
-        //blink_led(PIN_LED2);
         wifi_connect_builtin();
+        mqtt_setup();
         mqtt_try_connect();
         while (!mqtt_client.connected()) {
             log("mqtt", "retrying connection after delay");
