@@ -1,6 +1,12 @@
 #include "wifi.h"
+
 #include "debug.h"
+#include "sensitive.h"
 #include <WiFi.h>
+
+void wifi_setup(void) {
+    // nothing seems necessary...?
+}
 
 void wifi_on(void) {
     // seems unrequired, connect/begin seems to sort it

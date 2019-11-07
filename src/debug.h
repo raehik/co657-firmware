@@ -1,4 +1,5 @@
 #pragma once
+
 void debug_setup(void);
 void log(const char* log_group, const char* msg);
 void log(const char* msg);

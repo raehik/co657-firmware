@@ -1,3 +1,5 @@
+#include "nfc.h"
+
 #include <NfcTag.h>
 #include <NfcAdapter.h>
 #include <PN532_I2C.h>
@@ -15,6 +17,6 @@ boolean nfc_tag_present(void) {
     return nfc.tagPresent();
 }
 
-void nfc_read(NfcTag* tag) {
+void nfc_tag_read(NfcTag* tag) {
     *tag = nfc.read();
 }

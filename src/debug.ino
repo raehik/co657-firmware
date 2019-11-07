@@ -1,6 +1,6 @@
-#define SERIAL_RATE 9600
-
 #include "debug.h"
+
+#define SERIAL_RATE 9600
 
 void debug_setup(void) {
     Serial.begin(SERIAL_RATE);

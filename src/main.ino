@@ -1,16 +1,42 @@
-#include "states.h"
 #include "config.h"
+#include "wifi.h"
+#include "mqtt.h"
+#include "nfc.h"
+#include "msg.h"
+
+typedef enum {
+    STATE_POWERON,
+    STATE_READY,
+    STATE_READ,
+    STATE_IDLE,
+    STATE_SLEEP,
+    STATE_SEND,
+    STATE_TAGCHECK,
+} State ;
+
+State state;
+long now;
+long activity_last;
+long tag_check_last;
 
 void setup(void) {
     randomSeed(micros());
-    hardware_setup();
-    debug_setup();
-}
-
-void hardware_setup() {
-    btStop();
     pinMode(PIN_OUT_TAG_READ_STATUS_LED, OUTPUT);
     pinMode(PIN_LED2, OUTPUT);
+
+    debug_setup();
+    board_general_setup();
+    wifi_setup();
+    mqtt_setup();
+    nfc_setup();
+
+    now = millis();
+    activity_last = now;
+    tag_check_last = now;
+}
+
+void board_general_setup() {
+    btStop();
 }
 
 void loop(void) {
@@ -33,147 +59,118 @@ void loop(void) {
         case STATE_TAGCHECK:
             state_tagcheck();
             break;
+        case STATE_SEND:
+            state_send();
+            break;
+        default:
+            log("error", "got placed into an unhandled state");
     }
 }
 
-
-
-
-
-
-#include "nfc.h"
-#include "sensitive.h"
-
-#include <NfcTag.h>
-#include <Wire.h>
-#include <WiFi.h>
-#include <PubSubClient.h>
-#include "esp_system.h"
-
-#define TIMER_COUNT_UP true
-#define TIMER_EDGE_TRIGGER true
-#define TIMER_AUTORELOAD true
-#define TIMER_INC_US 80
-#define US_TO_MS 1000
-
-#define TIMER_TAG_CHECK_NUM 0
-#define TIMER_TAG_CHECK_TIMEOUT_MS 100
-
-int total_interrupts;
-
-/*
-struct timer_interrupt {
-    volatile boolean fired;
-    portMUX_TYPE mutex;
-    hw_timer_t* timer;
+void set_state(State next_state) {
+    state = next_state;
 }
 
-void create_timer_interrupt(struct timer_interrupt* interrupt, uint8_t
-        hw_timer_num, int timeout_ms, void (*callback)(void)) {
-    timer_interrupt->fired = false;
-    timer_interrupt->mutex = portMUX_INITIALIZER_UNLOCKED;
-    timer_interrupt->timer = timerBegin(hw_timer_num, TIMER_INC_US, TIMER_COUNT_UP);
-    timerAttachInterrupt(timer_interrupt->timer, callback, TIMER_EDGE_TRIGGER);
-    timerAlarmWrite(timer_interrupt->timer, timeout_ms * US_TO_MS, TIMER_AUTORELOAD);
-    timerAlarmEnable(timer_interrupt->timer);
-}
-*/
-
-hw_timer_t *timer_tag_check = NULL;
-volatile boolean i_t_tag_check;
-portMUX_TYPE i_t_tag_check_mutex = portMUX_INITIALIZER_UNLOCKED;
-volatile boolean i_g_button;
-portMUX_TYPE i_g_button_mutex = portMUX_INITIALIZER_UNLOCKED;
-
-void IRAM_ATTR i_t_tag_check_cb() {
-    portENTER_CRITICAL_ISR(&i_t_tag_check_mutex);
-    i_t_tag_check = true;
-    portEXIT_CRITICAL_ISR(&i_t_tag_check_mutex);
+// helper function for state transitions which do nothing
+void statetrans_simple(State next_state) {
+    log("state", "x -> y (unknown)");
+    set_state(next_state);
 }
 
-void IRAM_ATTR i_g_button_cb() {
-    portENTER_CRITICAL_ISR(&i_g_button_mutex);
-    i_g_button = true;
-    portEXIT_CRITICAL_ISR(&i_g_button_mutex);
+// start state and no transitions to, so set self up
+void state_poweron(void) {
+    log("state", "STATE_POWERON");
+    wifi_on();
+    wifi_connect();
+
+    mqtt_connect();
+    msg_send_status();
+    msg_recv_tracked_item_states();
+    mqtt_disconnect();
+
+    statetrans_poweron_ready();
 }
 
-void interrupts_setup() {
-    timer_tag_check = timerBegin(TIMER_TAG_CHECK_NUM, TIMER_INC_US, TIMER_COUNT_UP);
-    timerAttachInterrupt(timer_tag_check, &i_t_tag_check_cb, TIMER_EDGE_TRIGGER);
-    timerAlarmWrite(timer_tag_check, TIMER_TAG_CHECK_TIMEOUT_MS * US_TO_MS, TIMER_AUTORELOAD);
-    timerAlarmEnable(timer_tag_check);
-
-    pinMode(PIN_BUT, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(PIN_BUT), i_g_button_cb, FALLING);
+void statetrans_poweron_ready(void) {
+    log("state", "POWERON -> READY");
+    wifi_disconnect();
+    wifi_off();
+    set_state(STATE_READY);
 }
 
-void setup(void) {
-    randomSeed(micros());
-    pinMode(PIN_OUT_TAG_READ_STATUS_LED, OUTPUT);
-    pinMode(PIN_LED2, OUTPUT);
-    debug_setup();
-
-    radio_setup();
-    nfc_setup();
-
-    interrupts_setup();
-    log("ready");
+boolean timeout_expired(long event_last, long event_cycle_ms) {
+    return now - event_last > event_cycle_ms;
 }
 
-const char* mqtt_server = "mqtt.eclipse.org";
-int mqtt_port = 1883;
-
-WiFiClient mqtt_wifi_client;
-PubSubClient mqtt_client(mqtt_wifi_client);
-
-void mqtt_setup() {
-    mqtt_client.setServer(mqtt_server, mqtt_port);
+long tag_check_ms = 1000; // TODO 50-500ms
+long inactivity_timeout_sec = 5; // TODO 5-30m
+void state_ready(void) {
+    log("state", "READY");
+    now = millis();
+    if (timeout_expired(tag_check_last, tag_check_ms)) {
+        tag_check_last = now;
+        statetrans_simple(STATE_TAGCHECK);
+    } else if (timeout_expired(activity_last, inactivity_timeout_sec * 1000)) {
+        statetrans_simple(STATE_IDLE);
+    }
 }
 
-#define MQTT_CLIENT_ID_LEN 10
-char mqtt_client_id[MQTT_CLIENT_ID_LEN];
-boolean mqtt_try_connect() {
-    log("mqtt", "connecting...");
-    utils_rand_str(mqtt_client_id, MQTT_CLIENT_ID_LEN - 1);
-    log("mqtt", mqtt_client_id);
-    if (mqtt_client.connect(mqtt_client_id)) {
-        log("mqtt", "connected");
+void state_tagcheck(void) {
+    log("state", "TAGCHECK");
+    if (nfc_tag_present()) {
+        statetrans_simple(STATE_READ);
     } else {
-        log("mqtt", "failed to connect");
-        Serial.print("failed, rc=");
-        Serial.println(mqtt_client.state());
+        statetrans_simple(STATE_READY);
     }
-    return mqtt_client.connected();
 }
 
-void mqtt_send_test_msg(void) {
-    mqtt_client.publish("raehik", "chippy calling in");
+NfcTag nfc_tag;
+void state_read(void) {
+    log("state", "READ");
+    activity_last = now;
+    log("nfc", "TODO: read tag and place it somewhere");
+    nfc_tag_read(&nfc_tag);
+    delay(500);
+    statetrans_simple(STATE_READY);
 }
 
-void mqtt_disconnect() {
-    log("mqtt", "disconnecting...");
-    mqtt_client.disconnect();
-}
-
-void loop(void) {
-    if (i_t_tag_check) {
-        log("checking for tag presence");
-        portENTER_CRITICAL(&i_t_tag_check_mutex);
-        i_t_tag_check = false;
-        portEXIT_CRITICAL(&i_t_tag_check_mutex);
-
-        // don't queue any more scans while we're busy
-        //timerAlarmDisable(timer_scan);
-
-        digitalWrite(PIN_OUT_TAG_READ_STATUS_LED, HIGH);
-        if (nfc_tag_present()) {
-            NfcTag tag;
-            nfc_read(&tag);
-        }
-        digitalWrite(PIN_OUT_TAG_READ_STATUS_LED, LOW);
-    } else if (i_g_button) {
-        portENTER_CRITICAL(&i_g_button_mutex);
-        i_g_button = false;
-        portEXIT_CRITICAL(&i_g_button_mutex);
+void state_idle(void) {
+    log("state", "IDLE");
+    if (queued_msgs_present()) {
+        statetrans_idle_send();
+    } else {
+        statetrans_simple(STATE_SLEEP);
     }
+}
+
+void statetrans_idle_send(void) {
+    log("state", "IDLE -> SEND");
+    wifi_on();
+    wifi_connect();
+    mqtt_connect();
+    set_state(STATE_SEND);
+}
+
+void state_send(void) {
+    log("state", "SEND");
+    log("mqtt", "TODO: sending any queued messages");
+    statetrans_simple(STATE_SLEEP);
+}
+
+void statetrans_send_sleep(void) {
+    mqtt_disconnect();
+    wifi_disconnect();
+    wifi_off();
+    set_state(STATE_SLEEP);
+}
+
+void state_sleep(void) {
+    log("(fake sleeping: waiting a bit before going to ready again)");
+    delay(5000);
+    statetrans_simple(STATE_READY);
+}
+
+// TODO
+boolean queued_msgs_present(void) {
+    return false;
 }
