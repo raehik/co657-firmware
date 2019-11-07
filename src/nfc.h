@@ -1,3 +1,4 @@
+#pragma once
 #include <NfcTag.h>
 
 void nfc_setup(void);

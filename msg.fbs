@@ -1,0 +1,53 @@
+// Example IDL file for our monster's schema.
+namespace SmartDrobe;
+
+// for general system object ID, we use UUID == 128 bits -> 2 x long (64 bit)
+struct object_id {
+  p1:long
+  p2:long
+}
+
+enum collection_state : byte {
+  present,
+  removed,
+  unknown,
+  new,
+}
+
+table collection {
+  items:[object_id]
+}
+
+table tag_scan {
+  timestamp:long // 64bit
+  collection_id:object_id
+  believed_next_state:item_state
+
+}
+
+// ---
+
+enum Color:byte { Red = 0, Green, Blue = 2 }
+union Equipment { Weapon } // Optionally add more tables.
+struct Vec3 {
+  x:float;
+  y:float;
+  z:float;
+}
+table Monster {
+  pos:Vec3; // Struct.
+  mana:short = 150;
+  hp:short = 100;
+  name:string;
+  friendly:bool = false (deprecated);
+  inventory:[ubyte];  // Vector of scalars.
+  color:Color = Blue; // Enum.
+  weapons:[Weapon];   // Vector of tables.
+  equipped:Equipment; // Union.
+  path:[Vec3];        // Vector of structs.
+}
+table Weapon {
+  name:string;
+  damage:short;
+}
+root_type Monster;

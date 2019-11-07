@@ -1,47 +1,6 @@
-#include "states.h"
-#include "config.h"
-
-void setup(void) {
-    randomSeed(micros());
-    hardware_setup();
-    debug_setup();
-}
-
-void hardware_setup() {
-    btStop();
-    pinMode(PIN_OUT_TAG_READ_STATUS_LED, OUTPUT);
-    pinMode(PIN_LED2, OUTPUT);
-}
-
-void loop(void) {
-    switch(state) {
-        case STATE_POWERON:
-            state_poweron();
-            break;
-        case STATE_READY:
-            state_ready();
-            break;
-        case STATE_READ:
-            state_read();
-            break;
-        case STATE_IDLE:
-            state_idle();
-            break;
-        case STATE_SLEEP:
-            state_sleep();
-            break;
-        case STATE_TAGCHECK:
-            state_tagcheck();
-            break;
-    }
-}
-
-
-
-
-
-
+#include "debug.h"
 #include "nfc.h"
+#include "config.h"
 #include "sensitive.h"
 
 #include <NfcTag.h>
@@ -107,6 +66,32 @@ void interrupts_setup() {
     attachInterrupt(digitalPinToInterrupt(PIN_BUT), i_g_button_cb, FALLING);
 }
 
+void wifi_connect_builtin(void) {
+    log_begin("net/wifi", "connecting via builtin credentials");
+    log("net/wifi", ssid);
+    WiFi.begin(ssid, password);
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        log_indicate_wait();
+    }
+    log_end();
+    log("net/wifi", "connected");
+    log("net/wifi", WiFi.localIP().toString().c_str());
+}
+
+void wifi_off(void) {
+    WiFi.mode(WIFI_OFF);
+}
+
+void wifi_disconnect(void) {
+    WiFi.disconnect();
+}
+
+void radio_setup(void) {
+    btStop();
+    wifi_off();
+}
+
 void setup(void) {
     randomSeed(micros());
     pinMode(PIN_OUT_TAG_READ_STATUS_LED, OUTPUT);
@@ -134,7 +119,7 @@ void mqtt_setup() {
 char mqtt_client_id[MQTT_CLIENT_ID_LEN];
 boolean mqtt_try_connect() {
     log("mqtt", "connecting...");
-    utils_rand_str(mqtt_client_id, MQTT_CLIENT_ID_LEN - 1);
+    rand_str(mqtt_client_id, MQTT_CLIENT_ID_LEN - 1);
     log("mqtt", mqtt_client_id);
     if (mqtt_client.connect(mqtt_client_id)) {
         log("mqtt", "connected");
@@ -153,6 +138,30 @@ void mqtt_send_test_msg(void) {
 void mqtt_disconnect() {
     log("mqtt", "disconnecting...");
     mqtt_client.disconnect();
+}
+
+void blink_led(int pin) {
+    digitalWrite(pin, HIGH);
+    delay(50); // TODO ugh
+    digitalWrite(pin, LOW);
+}
+
+int button_prev = LOW;
+int led_state = LOW;
+void toggle_led_if_state_change(int pin1, int pin2) {
+    int button_next = digitalRead(pin1);
+    if (button_prev == HIGH && button_next == LOW) {
+        if (led_state == LOW) {
+            log("but", "going high");
+            digitalWrite(pin2, HIGH);
+            led_state = HIGH;
+        } else if (led_state == HIGH) {
+            log("but", "going low");
+            digitalWrite(pin2, LOW);
+            led_state = LOW;
+        }
+    }
+    button_prev = button_next;
 }
 
 void loop(void) {
@@ -175,5 +184,18 @@ void loop(void) {
         portENTER_CRITICAL(&i_g_button_mutex);
         i_g_button = false;
         portEXIT_CRITICAL(&i_g_button_mutex);
+
+        wifi_connect_builtin();
+        mqtt_setup();
+        mqtt_try_connect();
+        while (!mqtt_client.connected()) {
+            log("mqtt", "retrying connection after delay");
+            delay(2000);
+            mqtt_try_connect();
+        }
+        mqtt_send_test_msg();
+        mqtt_disconnect();
+        wifi_disconnect();
+        wifi_off();
     }
 }
