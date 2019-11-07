@@ -105,7 +105,7 @@ boolean timeout_expired(long event_last, long event_cycle_ms) {
 long tag_check_ms = 1000; // TODO 50-500ms
 long inactivity_timeout_sec = 5; // TODO 5-30m
 void state_ready(void) {
-    log("state", "READY");
+    //log("state", "READY");
     now = millis();
     if (timeout_expired(tag_check_last, tag_check_ms)) {
         tag_check_last = now;
@@ -127,11 +127,21 @@ void state_tagcheck(void) {
 NfcTag nfc_tag;
 void state_read(void) {
     log("state", "READ");
+    digitalWrite(PIN_OUT_TAG_READ_STATUS_LED, HIGH);
     activity_last = now;
     log("nfc", "TODO: read tag and place it somewhere");
     nfc_tag_read(&nfc_tag);
+    digitalWrite(PIN_OUT_TAG_READ_STATUS_LED, LOW);
     delay(500);
     statetrans_simple(STATE_READY);
+}
+
+void statetrans_idle_send(void) {
+    log("state", "IDLE -> SEND");
+    wifi_on();
+    wifi_connect();
+    mqtt_connect();
+    set_state(STATE_SEND);
 }
 
 void state_idle(void) {
@@ -143,12 +153,11 @@ void state_idle(void) {
     }
 }
 
-void statetrans_idle_send(void) {
-    log("state", "IDLE -> SEND");
-    wifi_on();
-    wifi_connect();
-    mqtt_connect();
-    set_state(STATE_SEND);
+void statetrans_send_sleep(void) {
+    mqtt_disconnect();
+    wifi_disconnect();
+    wifi_off();
+    set_state(STATE_SLEEP);
 }
 
 void state_send(void) {
@@ -157,17 +166,16 @@ void state_send(void) {
     statetrans_simple(STATE_SLEEP);
 }
 
-void statetrans_send_sleep(void) {
-    mqtt_disconnect();
-    wifi_disconnect();
-    wifi_off();
-    set_state(STATE_SLEEP);
+void statetrans_sleep_ready(void) {
+    now = millis();
+    activity_last = now;
+    set_state(STATE_READY);
 }
 
 void state_sleep(void) {
     log("(fake sleeping: waiting a bit before going to ready again)");
     delay(5000);
-    statetrans_simple(STATE_READY);
+    statetrans_sleep_ready();
 }
 
 // TODO

@@ -5,7 +5,7 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 
-const char* mqtt_server = "mqtt.eclipse.org";
+const char* mqtt_server = "broker.hivemq.com";
 int mqtt_port = 1883;
 
 WiFiClient mqtt_wifi_client;

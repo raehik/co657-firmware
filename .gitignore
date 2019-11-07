@@ -1,5 +1,6 @@
 .pio
 .clang_complete
 .gcc-flags.json
-
 .ccls
+src/*.ino.cpp
+src/sensitive.h
