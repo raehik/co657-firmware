@@ -1,5 +1,6 @@
 #include "wifi.h"
 
+#include "config.h"
 #include "debug.h"
 #include "sensitive.h"
 #include <WiFi.h>
@@ -21,7 +22,11 @@ void wifi_disconnect(void) {
 }
 
 void wifi_off(void) {
+#ifndef DISABLE_PWR_MGMT
     WiFi.mode(WIFI_OFF);
+#else
+    log("wifi", "power management disabled, ignoring power off command");
+#endif
 }
 
 void wifi_connect_builtin(void) {

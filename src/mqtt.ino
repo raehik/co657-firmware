@@ -1,5 +1,6 @@
 #include "mqtt.h"
 
+#include "config.h"
 #include "debug.h"
 
 #include <WiFi.h>

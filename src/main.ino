@@ -4,6 +4,9 @@
 #include "nfc.h"
 #include "msg.h"
 
+#define TAG_CHECK_MS 1000 // TODO 50-500ms
+#define INACTIVITY_TIMEOUT_SEC 5 // TODO 5-30m
+
 typedef enum {
     STATE_POWERON,
     STATE_READY,
@@ -102,15 +105,13 @@ boolean timeout_expired(long event_last, long event_cycle_ms) {
     return now - event_last > event_cycle_ms;
 }
 
-long tag_check_ms = 1000; // TODO 50-500ms
-long inactivity_timeout_sec = 5; // TODO 5-30m
 void state_ready(void) {
     //log("state", "READY");
     now = millis();
-    if (timeout_expired(tag_check_last, tag_check_ms)) {
+    if (timeout_expired(tag_check_last, TAG_CHECK_MS)) {
         tag_check_last = now;
         statetrans_simple(STATE_TAGCHECK);
-    } else if (timeout_expired(activity_last, inactivity_timeout_sec * 1000)) {
+    } else if (timeout_expired(activity_last, INACTIVITY_TIMEOUT_SEC * 1000)) {
         statetrans_simple(STATE_IDLE);
     }
 }
