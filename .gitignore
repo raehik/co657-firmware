@@ -4,3 +4,4 @@
 .ccls
 src/*.ino.cpp
 src/sensitive.h
+src/sensitive-lab.h
