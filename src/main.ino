@@ -27,6 +27,7 @@ void setup(void) {
     randomSeed(micros());
     pinMode(PIN_OUT_TAG_READ_STATUS_LED, OUTPUT);
     pinMode(PIN_LED2, OUTPUT);
+    pinMode(PIN_BUT, INPUT_PULLUP);
 
     debug_setup();
     board_general_setup();
@@ -99,6 +100,7 @@ void statetrans_poweron_ready(void) {
     log("state", "POWERON -> READY");
     wifi_disconnect();
     wifi_off();
+    digitalWrite(PIN_LED2, HIGH);
     set_state(STATE_READY);
 }
 
@@ -114,6 +116,24 @@ void state_ready(void) {
         statetrans_simple(STATE_TAGCHECK);
     } else if (timeout_expired(activity_last, INACTIVITY_TIMEOUT_SEC * 1000)) {
         statetrans_simple(STATE_IDLE);
+    // TODO TMP FUN BUTTON CASE
+    } else if (digitalRead(PIN_BUT) == LOW) {
+        digitalWrite(PIN_LED2, LOW);
+
+        wifi_on();
+        wifi_connect();
+        mqtt_connect();
+        mqtt_send_test_msg();
+        mqtt_disconnect();
+        wifi_disconnect();
+        wifi_off();
+
+        delay(1000);
+
+        now = millis();
+        activity_last = now;
+
+        digitalWrite(PIN_LED2, HIGH);
     }
 }
 
@@ -165,7 +185,7 @@ void statetrans_send_sleep(void) {
 void state_send(void) {
     log("state", "SEND");
     log("mqtt", "TODO: sending any queued messages");
-    statetrans_simple(STATE_SLEEP);
+    statetrans_send_sleep();
 }
 
 void statetrans_sleep_ready(void) {
@@ -175,8 +195,10 @@ void statetrans_sleep_ready(void) {
 }
 
 void state_sleep(void) {
+    digitalWrite(PIN_LED2, LOW);
     log("(fake sleeping: waiting a bit before going to ready again)");
     delay(5000);
+    digitalWrite(PIN_LED2, HIGH);
     statetrans_sleep_ready();
 }
 
