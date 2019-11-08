@@ -26,8 +26,8 @@ void mqtt_disconnect() {
     mqtt_client.disconnect();
 }
 
-void mqtt_send_test_msg(void) {
-    mqtt_client.publish("raehik", "chippy calling in");
+void mqtt_send_test_msg(char *msg) {
+    mqtt_client.publish("raehik", msg);
 }
 
 #define MQTT_CLIENT_ID_LEN 20

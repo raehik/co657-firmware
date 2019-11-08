@@ -11,6 +11,7 @@ void wifi_setup(void) {
 
 void wifi_on(void) {
     // seems unrequired, connect/begin seems to sort it
+    digitalWrite(PIN_OUT_WIFI_STATUS_LED, HIGH);
 }
 
 void wifi_connect(void) {
@@ -24,6 +25,7 @@ void wifi_disconnect(void) {
 void wifi_off(void) {
 #ifndef DISABLE_PWR_MGMT
     WiFi.mode(WIFI_OFF);
+    digitalWrite(PIN_OUT_WIFI_STATUS_LED, LOW);
 #else
     log("wifi", "power management disabled, ignoring power off command");
 #endif

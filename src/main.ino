@@ -26,7 +26,8 @@ NfcTag nfc_tag;
 void setup(void) {
     randomSeed(micros());
     pinMode(PIN_OUT_TAG_READ_STATUS_LED, OUTPUT);
-    pinMode(PIN_LED2, OUTPUT);
+    digitalWrite(PIN_OUT_TAG_READ_STATUS_LED, LOW);
+    pinMode(PIN_OUT_WIFI_STATUS_LED, OUTPUT);
     pinMode(PIN_BUT, INPUT_PULLUP);
 
     debug_setup();
@@ -100,7 +101,6 @@ void statetrans_poweron_ready(void) {
     log("state", "POWERON -> READY");
     wifi_disconnect();
     wifi_off();
-    digitalWrite(PIN_LED2, HIGH);
     set_state(STATE_READY);
 }
 
@@ -118,12 +118,10 @@ void state_ready(void) {
         statetrans_simple(STATE_IDLE);
     // TODO TMP FUN BUTTON CASE
     } else if (digitalRead(PIN_BUT) == LOW) {
-        digitalWrite(PIN_LED2, LOW);
-
         wifi_on();
         wifi_connect();
         mqtt_connect();
-        mqtt_send_test_msg();
+        mqtt_send_test_msg("button pressed");
         mqtt_disconnect();
         wifi_disconnect();
         wifi_off();
@@ -132,8 +130,6 @@ void state_ready(void) {
 
         now = millis();
         activity_last = now;
-
-        digitalWrite(PIN_LED2, HIGH);
     }
 }
 
@@ -146,15 +142,20 @@ void state_tagcheck(void) {
     }
 }
 
+char tmp_msgs[10][20];
+int tmp_msgs_i = 0;
 void state_read(void) {
     log("state", "READ");
     digitalWrite(PIN_OUT_TAG_READ_STATUS_LED, HIGH);
-    activity_last = now;
     nfc_tag_read(&nfc_tag);
     digitalWrite(PIN_OUT_TAG_READ_STATUS_LED, LOW);
     Serial.println(nfc_tag.getTagType());
     log("nfc", nfc_tag.getUidString().c_str());
+    //tmp_msgs[tmp_msgs_i] = nfc_tag.getUidString().c_str();
+    strcpy(tmp_msgs[tmp_msgs_i], nfc_tag.getUidString().c_str());
+    tmp_msgs_i++;
     delay(500);
+    activity_last = now;
     statetrans_simple(STATE_READY);
 }
 
@@ -164,6 +165,10 @@ void statetrans_idle_send(void) {
     wifi_connect();
     mqtt_connect();
     set_state(STATE_SEND);
+}
+
+boolean queued_msgs_present() {
+    return tmp_msgs_i > 0;
 }
 
 void state_idle(void) {
@@ -184,7 +189,10 @@ void statetrans_send_sleep(void) {
 
 void state_send(void) {
     log("state", "SEND");
-    log("mqtt", "TODO: sending any queued messages");
+    for (int i = 0; i < tmp_msgs_i; i++) {
+        mqtt_send_test_msg(tmp_msgs[i]);
+    }
+    tmp_msgs_i = 0;
     statetrans_send_sleep();
 }
 
@@ -195,14 +203,7 @@ void statetrans_sleep_ready(void) {
 }
 
 void state_sleep(void) {
-    digitalWrite(PIN_LED2, LOW);
     log("(fake sleeping: waiting a bit before going to ready again)");
     delay(5000);
-    digitalWrite(PIN_LED2, HIGH);
     statetrans_sleep_ready();
-}
-
-// TODO
-boolean queued_msgs_present(void) {
-    return false;
 }
