@@ -21,6 +21,7 @@ State state;
 long now;
 long activity_last;
 long tag_check_last;
+NfcTag nfc_tag;
 
 void setup(void) {
     randomSeed(micros());
@@ -125,14 +126,14 @@ void state_tagcheck(void) {
     }
 }
 
-NfcTag nfc_tag;
 void state_read(void) {
     log("state", "READ");
     digitalWrite(PIN_OUT_TAG_READ_STATUS_LED, HIGH);
     activity_last = now;
-    log("nfc", "TODO: read tag and place it somewhere");
     nfc_tag_read(&nfc_tag);
     digitalWrite(PIN_OUT_TAG_READ_STATUS_LED, LOW);
+    Serial.println(nfc_tag.getTagType());
+    log("nfc", nfc_tag.getUidString().c_str());
     delay(500);
     statetrans_simple(STATE_READY);
 }

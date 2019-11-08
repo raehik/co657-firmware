@@ -1,4 +1,7 @@
 # TODOs
+## Reliable reading
+  * For each tag, do a timeout to ensure we don't re-scan within X secs (5s?)
+
 ## Power management
 ### NFC transceiver
 *Assuming read-only for now.*
